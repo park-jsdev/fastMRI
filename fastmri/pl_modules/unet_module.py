@@ -14,6 +14,66 @@ from fastmri.models import Unet
 
 from .mri_module import MriModule
 
+from piq import ssim, psnr
+from fastmri.losses.roi_loss import roi_weighted_loss
+
+import csv
+import os
+from piq import ssim, psnr
+import torch.nn.functional as F
+from fastmri.losses.roi_loss import make_soft_center_mask
+
+def validation_epoch_end(self, outputs):
+    global_ssims, roi_ssims = [], []
+    global_psnrs, roi_mses = [], []
+
+    for out in outputs:
+        recon = out["output"].unsqueeze(0)
+        target = out["target"].unsqueeze(0)
+
+        # Normalize to [0, 1]
+        recon = torch.clamp(recon / recon.max(), 0, 1)
+        target = torch.clamp(target / target.max(), 0, 1)
+
+        # Metrics
+        global_ssims.append(ssim(recon, target, data_range=1.0).item())
+        global_psnrs.append(psnr(recon, target, data_range=1.0).item())
+
+        mask = make_soft_center_mask(recon.shape, margin_ratio=self.roi_margin, strength=self.roi_strength)
+        weighted_diff = (1 - ssim(recon, target, reduction='none')) * mask
+        roi_ssims.append((1 - weighted_diff.sum() / mask.sum()).item())
+
+        roi_mses.append(((recon - target) ** 2 * mask).mean().item())
+
+    # Compute averages
+    avg_global_ssim = sum(global_ssims) / len(global_ssims)
+    avg_roi_ssim = sum(roi_ssims) / len(roi_ssims)
+    avg_global_psnr = sum(global_psnrs) / len(global_psnrs)
+    avg_roi_mse = sum(roi_mses) / len(roi_mses)
+
+    # Log to TensorBoard
+    self.log("val/global_ssim", avg_global_ssim, prog_bar=True)
+    self.log("val/roi_ssim", avg_roi_ssim, prog_bar=True)
+    self.log("val/global_psnr", avg_global_psnr, prog_bar=True)
+    self.log("val/roi_mse", avg_roi_mse, prog_bar=True)
+
+    # Print to console
+    print(f"\n[Validation Metrics @ Epoch {self.current_epoch}]")
+    print(f"Global SSIM     : {avg_global_ssim:.4f}")
+    print(f"ROI SSIM        : {avg_roi_ssim:.4f}")
+    print(f"Global PSNR     : {avg_global_psnr:.2f} dB")
+    print(f"ROI MSE         : {avg_roi_mse:.6f}")
+
+    # Save to CSV
+    csv_path = os.path.join(self.logger.log_dir, "val_metrics.csv")
+    write_header = not os.path.exists(csv_path)
+
+    with open(csv_path, mode="a", newline="") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(["epoch", "global_ssim", "roi_ssim", "global_psnr", "roi_mse"])
+        writer.writerow([self.current_epoch, avg_global_ssim, avg_roi_ssim, avg_global_psnr, avg_roi_mse])
+
 
 class UnetModule(MriModule):
     """
@@ -36,6 +96,13 @@ class UnetModule(MriModule):
         lr_step_size=40,
         lr_gamma=0.1,
         weight_decay=0.0,
+
+        # New params
+        loss_type="l1",
+        roi_weighting=False,
+        roi_margin=0.2,  
+        roi_strength=5.0,
+
         **kwargs,
     ):
         """
@@ -70,6 +137,12 @@ class UnetModule(MriModule):
         self.lr_gamma = lr_gamma
         self.weight_decay = weight_decay
 
+        # new loss configs
+        self.loss_type = loss_type
+        self.roi_weighting = roi_weighting
+        self.roi_margin = roi_margin
+        self.roi_strength = roi_strength
+
         self.unet = Unet(
             in_chans=self.in_chans,
             out_chans=self.out_chans,
@@ -83,7 +156,17 @@ class UnetModule(MriModule):
 
     def training_step(self, batch, batch_idx):
         output = self(batch.image)
-        loss = F.l1_loss(output, batch.target)
+
+        # loss = F.l1_loss(output, batch.target)
+        loss = roi_weighted_loss(
+            output,
+            batch.target,
+            loss_type=self.loss_type,
+            use_roi=self.roi_weighting,
+            margin_ratio=self.roi_margin,
+            strength=self.roi_strength,
+        )
+
 
         self.log("loss", loss.detach())
 
@@ -94,6 +177,15 @@ class UnetModule(MriModule):
         mean = batch.mean.unsqueeze(1).unsqueeze(2)
         std = batch.std.unsqueeze(1).unsqueeze(2)
 
+        val_loss = roi_weighted_loss(
+            output,
+            batch.target,
+            loss_type=self.loss_type,
+            use_roi=self.roi_weighting,
+            margin_ratio=self.roi_margin,
+            strength=self.roi_strength,
+        )
+
         return {
             "batch_idx": batch_idx,
             "fname": batch.fname,
@@ -101,8 +193,9 @@ class UnetModule(MriModule):
             "max_value": batch.max_value,
             "output": output * std + mean,
             "target": batch.target * std + mean,
-            "val_loss": F.l1_loss(output, batch.target),
+            "val_loss": val_loss,
         }
+
 
     def test_step(self, batch, batch_idx):
         output = self.forward(batch.image)
@@ -174,5 +267,10 @@ class UnetModule(MriModule):
             type=float,
             help="Strength of weight decay regularization",
         )
+        parser.add_argument("--loss-type", default="l1", choices=["l1", "l2"], type=str)
+        parser.add_argument("--roi-weighting", action="store_true", help="Use center-weighted ROI loss")
+        parser.add_argument("--roi-margin", default=0.2, type=float, help="Margin ratio for center ROI mask")
+        parser.add_argument("--roi-strength", default=5.0, type=float, help="Strength of soft ROI Gaussian weighting")
+
 
         return parser

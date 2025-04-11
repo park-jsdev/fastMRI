@@ -1,0 +1,4 @@
+loss_type: l2          # or "l1"
+roi_weighting: true    # or false
+roi_margin: 0.2        # 20% margin from edges
+roi_strength: 5.0
