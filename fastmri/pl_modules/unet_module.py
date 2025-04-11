@@ -124,8 +124,23 @@ class UnetModule(MriModule):
             weight_decay (float, optional): Parameter for penalizing weights
                 norm. Defaults to 0.0.
         """
+
+        # Extract and remove custom arguments from kwargs first
+        loss_type = kwargs.pop("loss_type", "l1")
+        roi_weighting = kwargs.pop("roi_weighting", False)
+        roi_margin = kwargs.pop("roi_margin", 0.2)
+        roi_strength = kwargs.pop("roi_strength", 5.0)
+
         super().__init__(**kwargs)
+
+        self.loss_type = loss_type
+        self.roi_weighting = roi_weighting
+        self.roi_margin = roi_margin
+        self.roi_strength = roi_strength
+
         self.save_hyperparameters()
+
+        print(f"Using loss_type={self.loss_type}, roi_weighting={self.roi_weighting}, margin={self.roi_margin}, strength={self.roi_strength}")
 
         self.in_chans = in_chans
         self.out_chans = out_chans
