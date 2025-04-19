@@ -8,20 +8,13 @@ LICENSE file in the root directory of this source tree.
 from argparse import ArgumentParser
 
 import torch
-from torch.nn import functional as F
-
 from fastmri.models import Unet
-
-from .mri_module import MriModule
-
+from fastmri.pl_modules.mri_module import MriModule
 from piq import ssim, psnr
-from fastmri.losses.roi_loss import roi_weighted_loss
-
+from fastmri.losses import ROILoss, SSIMLoss
 import csv
 import os
-from piq import ssim, psnr
 import torch.nn.functional as F
-from fastmri.losses.roi_loss import make_soft_center_mask
 
 def validation_epoch_end(self, outputs):
     global_ssims, roi_ssims = [], []
@@ -39,23 +32,37 @@ def validation_epoch_end(self, outputs):
         global_ssims.append(ssim(recon, target, data_range=1.0).item())
         global_psnrs.append(psnr(recon, target, data_range=1.0).item())
 
-        mask = make_soft_center_mask(recon.shape, margin_ratio=self.roi_margin, strength=self.roi_strength)
-        weighted_diff = (1 - ssim(recon, target, reduction='none')) * mask
+        # ROI mask for metric
+        # build a 4D mask from our 3D recon tensor
+        mask = self.loss_fn.make_mask(recon)  # implements the unsqueeze‑and‑route logic
+
+        # Mask image logging
+        self.logger.experiment.add_image(
+            "val/mask",
+            mask.squeeze(0),  # [1,H,W] or [H,W]
+            self.current_epoch
+        )
+
+        # ROI-SSIM (invert SSIM to get "difference" then weight)
+        diff = 1 - ssim(recon, target, reduction="none")
+        weighted_diff = diff * mask
         roi_ssims.append((1 - weighted_diff.sum() / mask.sum()).item())
 
+        # ROI‑MSE
         roi_mses.append(((recon - target) ** 2 * mask).mean().item())
 
-    # Compute averages
+    # average
     avg_global_ssim = sum(global_ssims) / len(global_ssims)
-    avg_roi_ssim = sum(roi_ssims) / len(roi_ssims)
     avg_global_psnr = sum(global_psnrs) / len(global_psnrs)
-    avg_roi_mse = sum(roi_mses) / len(roi_mses)
+    avg_roi_ssim    = sum(roi_ssims)    / len(roi_ssims)
+    avg_roi_mse     = sum(roi_mses)     / len(roi_mses)
 
-    # Log to TensorBoard
+
+    # log
     self.log("val/global_ssim", avg_global_ssim, prog_bar=True)
-    self.log("val/roi_ssim", avg_roi_ssim, prog_bar=True)
     self.log("val/global_psnr", avg_global_psnr, prog_bar=True)
-    self.log("val/roi_mse", avg_roi_mse, prog_bar=True)
+    self.log("val/roi_ssim",    avg_roi_ssim,    prog_bar=True)
+    self.log("val/roi_mse",     avg_roi_mse,     prog_bar=True)
 
     # Print to console
     print(f"\n[Validation Metrics @ Epoch {self.current_epoch}]")
@@ -84,7 +91,6 @@ class UnetModule(MriModule):
     J. Zbontar et al. fastMRI: An Open Dataset and Benchmarks for Accelerated
     MRI. arXiv:1811.08839. 2018.
     """
-
     def __init__(
         self,
         in_chans=1,
@@ -97,11 +103,13 @@ class UnetModule(MriModule):
         lr_gamma=0.1,
         weight_decay=0.0,
 
-        # New params
-        loss_type="l1",
-        roi_weighting=False,
-        roi_margin=0.2,  
-        roi_strength=5.0,
+
+        # –– ROI loss args
+        loss_type:      str   = "l1",  # "l1" or "l2"
+        roi_weighting:  bool  = False,  # turn ROI on/off
+        roi_mask:       str   = "binary",  # "binary" or "gaussian"
+        roi_margin:     float = 0.2,  # for binary mask
+        roi_strength:   float = 5.0,  # for gaussian mask
 
         **kwargs,
     ):
@@ -125,23 +133,16 @@ class UnetModule(MriModule):
                 norm. Defaults to 0.0.
         """
 
-        # Extract and remove custom arguments from kwargs first
-        loss_type = kwargs.pop("loss_type", "l1")
-        roi_weighting = kwargs.pop("roi_weighting", False)
-        roi_margin = kwargs.pop("roi_margin", 0.2)
-        roi_strength = kwargs.pop("roi_strength", 5.0)
+        # pop our custom args so MriModule.__init__ isn't confused
+        # (but keep them in locals for save_hyperparameters)
+        for key in ("loss_type", "roi_weighting", "roi_mask", "roi_margin", "roi_strength"):
+            kwargs.pop(key, None)
 
         super().__init__(**kwargs)
 
-        self.loss_type = loss_type
-        self.roi_weighting = roi_weighting
-        self.roi_margin = roi_margin
-        self.roi_strength = roi_strength
-
         self.save_hyperparameters()
 
-        print(f"Using loss_type={self.loss_type}, roi_weighting={self.roi_weighting}, margin={self.roi_margin}, strength={self.roi_strength}")
-
+        # restore all the standard args as attributes
         self.in_chans = in_chans
         self.out_chans = out_chans
         self.chans = chans
@@ -152,12 +153,16 @@ class UnetModule(MriModule):
         self.lr_gamma = lr_gamma
         self.weight_decay = weight_decay
 
-        # new loss configs
-        self.loss_type = loss_type
-        self.roi_weighting = roi_weighting
-        self.roi_margin = roi_margin
-        self.roi_strength = roi_strength
+        # –– instantiate the ROI loss
+        self.loss_fn = ROILoss(
+            loss_type = loss_type,
+            use_roi = roi_weighting,
+            roi_mask = roi_mask,
+            margin_ratio = roi_margin,
+            strength = roi_strength,
+        )
 
+        # –– model
         self.unet = Unet(
             in_chans=self.in_chans,
             out_chans=self.out_chans,
@@ -172,19 +177,10 @@ class UnetModule(MriModule):
     def training_step(self, batch, batch_idx):
         output = self(batch.image)
 
-        # loss = F.l1_loss(output, batch.target)
-        loss = roi_weighted_loss(
-            output,
-            batch.target,
-            loss_type=self.loss_type,
-            use_roi=self.roi_weighting,
-            margin_ratio=self.roi_margin,
-            strength=self.roi_strength,
-        )
+        # compute ROI‐weighted pixel loss directly
+        loss = self.loss_fn(output, batch.target)
 
-
-        self.log("loss", loss.detach())
-
+        self.log("train/loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -192,14 +188,8 @@ class UnetModule(MriModule):
         mean = batch.mean.unsqueeze(1).unsqueeze(2)
         std = batch.std.unsqueeze(1).unsqueeze(2)
 
-        val_loss = roi_weighted_loss(
-            output,
-            batch.target,
-            loss_type=self.loss_type,
-            use_roi=self.roi_weighting,
-            margin_ratio=self.roi_margin,
-            strength=self.roi_strength,
-        )
+        val_loss = self.loss_fn(output, batch.target)
+        self.log("validation_loss", val_loss, prog_bar=True)
 
         return {
             "batch_idx": batch_idx,
@@ -210,7 +200,6 @@ class UnetModule(MriModule):
             "target": batch.target * std + mean,
             "val_loss": val_loss,
         }
-
 
     def test_step(self, batch, batch_idx):
         output = self.forward(batch.image)
@@ -224,16 +213,15 @@ class UnetModule(MriModule):
         }
 
     def configure_optimizers(self):
-        optim = torch.optim.RMSprop(
+        optimizer = torch.optim.RMSprop(
             self.parameters(),
             lr=self.lr,
             weight_decay=self.weight_decay,
         )
         scheduler = torch.optim.lr_scheduler.StepLR(
-            optim, self.lr_step_size, self.lr_gamma
+            optimizer, self.lr_step_size, self.lr_gamma
         )
-
-        return [optim], [scheduler]
+        return [optimizer], [scheduler]
 
     @staticmethod
     def add_model_specific_args(parent_parser):  # pragma: no-cover
@@ -282,10 +270,10 @@ class UnetModule(MriModule):
             type=float,
             help="Strength of weight decay regularization",
         )
-        parser.add_argument("--loss-type", default="l1", choices=["l1", "l2"], type=str)
-        parser.add_argument("--roi-weighting", action="store_true", help="Use center-weighted ROI loss")
-        parser.add_argument("--roi-margin", default=0.2, type=float, help="Margin ratio for center ROI mask")
-        parser.add_argument("--roi-strength", default=5.0, type=float, help="Strength of soft ROI Gaussian weighting")
-
+        parser.add_argument("--loss-type", default="l1", choices=["l1", "l2"])
+        parser.add_argument("--roi-weighting", action="store_true", help = "Enable ROI loss instead of uniform")
+        parser.add_argument("--roi-mask", default="binary", choices = ["binary", "gaussian"], help = "Type of ROI mask")
+        parser.add_argument("--roi-margin", default=0.2, type=float, help = "Fractional border to zero out (binary mask)")
+        parser.add_argument("--roi-strength", default=5.0, type=float, help = "Sharpness of Gaussian mask")
 
         return parser

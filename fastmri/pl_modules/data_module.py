@@ -183,6 +183,8 @@ class FastMriDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.distributed_sampler = distributed_sampler
+        # for local tests
+        # self.num_workers = 0
 
     def _create_data_loader(
         self,

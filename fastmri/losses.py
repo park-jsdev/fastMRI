@@ -9,6 +9,86 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# =============================
+# ROI Loss
+# =============================
+
+class ROILoss(nn.Module):
+    def __init__(
+        self,
+        loss_type: str = "l2",             # "l2" or "l1"
+        use_roi: bool = False,             # whether to apply any ROI mask
+        roi_mask: str = "binary",          # "binary" or "gaussian"
+        margin_ratio: float = 0.2,         # for binary mask
+        strength: float = 5.0,             # for gaussian mask
+    ):
+        super().__init__()
+        self.loss_type    = loss_type
+        self.use_roi      = use_roi
+        self.roi_mask     = roi_mask
+        self.margin_ratio = margin_ratio
+        self.strength     = strength
+
+    def make_mask(self, tensor: torch.Tensor):
+        # tensor is [B,H,W] or [B,1,H,W]; want a [B,1,H,W] mask on same device
+        output = tensor.unsqueeze(1) if tensor.ndim == 3 else tensor
+        device = output.device
+        if self.roi_mask == "binary":
+            return self._binary_mask(output.shape, device)
+        return self._gaussian_mask(output.shape, device)
+
+    def _binary_mask(self, shape, device):
+        # keep center, zero margin
+        B, C, H, W = shape
+
+        h_m = int(H * self.margin_ratio)
+        w_m = int(W * self.margin_ratio)
+        m = torch.zeros((B, C, H, W), device=device)
+        m[:, :, h_m:H-h_m, w_m:W-w_m] = 1.0
+        return m
+
+    def _gaussian_mask(self, shape, device):
+        # soft center via Gaussian
+        # shape is (B, C, H, W); soft center via Gaussian
+        B, C, H, W = shape
+        y = torch.linspace(-1,1,H,device=device).view(-1,1).expand(H,W)
+        x = torch.linspace(-1,1,W,device=device).view(1,-1).expand(H,W)
+        # scale coordinates so margin_ratio controls spread:
+        y = y / self.margin_ratio
+        x = x / self.margin_ratio
+        g = torch.exp(-self.strength * (x**2 + y**2))
+        m = g.unsqueeze(0).unsqueeze(0).expand(B,C,H,W)
+        return m
+
+    def forward(self, output, target):
+        # ensure [B,1,H,W]
+        if output.ndim == 3:
+            output = output.unsqueeze(1)
+            target = target.unsqueeze(1)
+
+        # pick mask
+        if not self.use_roi:
+            mask = torch.ones_like(output)
+        else:
+            mask = self.make_mask(output)
+
+        # elementwise difference
+        if self.loss_type == "l2":
+            diff = (output - target) ** 2
+        else:
+            diff = torch.abs(output - target)
+        weighted = diff * mask
+
+        if self.use_roi:
+            # average only over the ROI (binary or gaussian)
+            return weighted.sum() / mask.sum()
+        else:
+            # uniform average over the whole image
+            return weighted.mean()
+
+# =============================
+# SSIM Loss
+# =============================
 
 class SSIMLoss(nn.Module):
     """
