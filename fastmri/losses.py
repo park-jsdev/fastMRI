@@ -59,13 +59,23 @@ class ROILoss(nn.Module):
         g = torch.exp(-self.strength * (x**2 + y**2))
         m = g.unsqueeze(0).unsqueeze(0).expand(B,C,H,W)
         return m
+    
+    def calculate_ssim_loss(self, batch_size, mask, output, target):
+        loss_fn = SSIMLoss()
+        data_range = torch.tensor([1.0] * batch_size, device=output.device)
+
+        if self.use_roi:
+            loss = loss_fn(output, target, data_range, mask)
+        else:
+            loss = loss_fn(output, target, data_range)
+        return loss
 
     def forward(self, output, target):
         # ensure [B,1,H,W]
         if output.ndim == 3:
             output = output.unsqueeze(1)
             target = target.unsqueeze(1)
-
+        B, _, H, W = output.shape
         # pick mask
         if not self.use_roi:
             mask = torch.ones_like(output)
@@ -75,6 +85,9 @@ class ROILoss(nn.Module):
         # elementwise difference
         if self.loss_type == "l2":
             diff = (output - target) ** 2
+        elif self.loss_type == "ssim":
+            loss = self.calculate_ssim_loss(B, mask, output, target)
+            return loss
         else:
             diff = torch.abs(output - target)
         weighted = diff * mask
@@ -114,6 +127,7 @@ class SSIMLoss(nn.Module):
         X: torch.Tensor,
         Y: torch.Tensor,
         data_range: torch.Tensor,
+        mask: torch.Tensor = None,
         reduced: bool = True,
     ):
         assert isinstance(self.w, torch.Tensor)
@@ -137,8 +151,16 @@ class SSIMLoss(nn.Module):
         )
         D = B1 * B2
         S = (A1 * A2) / D
+        
+        if mask is not None:
+            # Ensure the mask has the same spatial dimensions as S
+            assert mask.shape[2:] == S.shape[2:], "Mask dimensions do not match SSIM output dimensions"
+            # Weight the SSIM loss with the mask (element-wise multiplication)
+            S = S * mask  # Apply the mask element-wise
 
         if reduced:
-            return 1 - S.mean()
+            # Return the weighted mean SSIM loss (mean over the weighted values)
+            return 1 - S.sum() / mask.sum() if mask is not None else 1 - S.mean()
         else:
+            # Return the un-reduced (pixel-wise) weighted SSIM
             return 1 - S
