@@ -50,22 +50,33 @@ def cli_main(args):
     with open("../../configs/unet_config.yaml", "r") as f:
         config = yaml.safe_load(f)
 
+    loss_type     = args.loss_type
+    roi_weighting = args.roi_weighting
+    roi_mask      = args.roi_mask
+    roi_margin    = args.roi_margin
+    roi_strength  = args.roi_strength
+
     # ------------
     # model
     # ------------
+
     model = UnetModule(
-        in_chans=args.in_chans,
-        out_chans=args.out_chans,
-        chans=args.chans,
-        num_pool_layers=args.num_pool_layers,
-        drop_prob=args.drop_prob,
-        lr=args.lr,
-        lr_step_size=args.lr_step_size,
-        lr_gamma=args.lr_gamma,
-        weight_decay=args.weight_decay,
-        loss_type=config.get("loss_type", "l1"),
-        roi_weighting=config.get("roi_weighting", False),
-        roi_margin=config.get("roi_margin", 0.2),
+        in_chans       = args.in_chans,
+        out_chans      = args.out_chans,
+        chans          = args.chans,
+        num_pool_layers= args.num_pool_layers,
+        drop_prob      = args.drop_prob,
+        lr             = args.lr,
+        lr_step_size   = args.lr_step_size,
+        lr_gamma       = args.lr_gamma,
+        weight_decay   = args.weight_decay,
+
+        # **the ROI flags**
+        loss_type      = loss_type,
+        roi_weighting  = roi_weighting,
+        roi_mask       = roi_mask,
+        roi_margin     = roi_margin,
+        roi_strength   = roi_strength,
     )
 
     # ------------
