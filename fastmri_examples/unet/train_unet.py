@@ -82,7 +82,7 @@ def cli_main(args):
     # ------------
     # trainer
     # ------------
-    trainer = pl.Trainer.from_argparse_args(args)
+    trainer = pl.Trainer.from_argparse_args(args, callbacks=args.callbacks)
 
     # ------------
     # run
@@ -198,6 +198,15 @@ def build_args():
 
 def run_cli():
     args = build_args()
+    args.default_root_dir = args.default_root_dir / f"roi_{args.roi_mask}"
+    args.callbacks = [
+        pl.callbacks.ModelCheckpoint(
+            dirpath=args.default_root_dir / "checkpoints",
+            save_top_k=True,
+            monitor="validation_loss",
+            mode="min",
+        )
+    ]
 
     # ---------------------
     # RUN TRAINING
