@@ -122,6 +122,14 @@ class SSIMLoss(nn.Module):
         NP = win_size**2
         self.cov_norm = NP / (NP - 1)
 
+    def crop_gaussian_mask(self, mask, target_size):
+        """Crop the center of the Gaussian mask to the target size."""
+        original_size = mask.shape[2:]  # Assuming the mask shape is [1, 1, H, W]
+        start_x = (original_size[0] - target_size[0]) // 2
+        start_y = (original_size[1] - target_size[1]) // 2
+        cropped_mask = mask[:, :, start_x:start_x + target_size[0], start_y:start_y + target_size[1]]
+        return cropped_mask
+
     def forward(
         self,
         X: torch.Tensor,
@@ -131,7 +139,7 @@ class SSIMLoss(nn.Module):
         reduced: bool = True,
     ):
         assert isinstance(self.w, torch.Tensor)
-
+        self.w = self.w.to(X.device)
         data_range = data_range[:, None, None, None]
         C1 = (self.k1 * data_range) ** 2
         C2 = (self.k2 * data_range) ** 2
@@ -154,6 +162,8 @@ class SSIMLoss(nn.Module):
         
         if mask is not None:
             # Ensure the mask has the same spatial dimensions as S
+            target_size = S.shape[2:]
+            mask = self.crop_gaussian_mask(mask, target_size)
             assert mask.shape[2:] == S.shape[2:], "Mask dimensions do not match SSIM output dimensions"
             # Weight the SSIM loss with the mask (element-wise multiplication)
             S = S * mask  # Apply the mask element-wise

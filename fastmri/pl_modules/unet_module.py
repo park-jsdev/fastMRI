@@ -152,7 +152,6 @@ class UnetModule(MriModule):
         self.lr_step_size = lr_step_size
         self.lr_gamma = lr_gamma
         self.weight_decay = weight_decay
-
         # –– instantiate the ROI loss
         self.loss_fn = ROILoss(
             loss_type = loss_type,
@@ -270,7 +269,7 @@ class UnetModule(MriModule):
             type=float,
             help="Strength of weight decay regularization",
         )
-        parser.add_argument("--loss-type", default="l1", choices=["l1", "l2"])
+        parser.add_argument("--loss-type", default="l1", choices=["l1", "l2", "ssim"])
         parser.add_argument("--roi-weighting", action="store_true", help = "Enable ROI loss instead of uniform")
         parser.add_argument("--roi-mask", default="binary", choices = ["binary", "gaussian"], help = "Type of ROI mask")
         parser.add_argument("--roi-margin", default=0.2, type=float, help = "Fractional border to zero out (binary mask)")
