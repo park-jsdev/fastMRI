@@ -60,9 +60,9 @@ class ROILoss(nn.Module):
         m = g.unsqueeze(0).unsqueeze(0).expand(B,C,H,W)
         return m
     
-    def calculate_ssim_loss(self, batch_size, mask, output, target):
+    def calculate_ssim_loss(self, batch_size, mask, output, target, batch_max_value):
         loss_fn = SSIMLoss()
-        data_range = torch.tensor([1.0] * batch_size, device=output.device)
+        data_range = batch_max_value
 
         if self.use_roi:
             loss = loss_fn(output, target, data_range, mask)
@@ -70,7 +70,7 @@ class ROILoss(nn.Module):
             loss = loss_fn(output, target, data_range)
         return loss
 
-    def forward(self, output, target):
+    def forward(self, output, target, batch_max_value):
         # ensure [B,1,H,W]
         if output.ndim == 3:
             output = output.unsqueeze(1)
@@ -86,7 +86,7 @@ class ROILoss(nn.Module):
         if self.loss_type == "l2":
             diff = (output - target) ** 2
         elif self.loss_type == "ssim":
-            loss = self.calculate_ssim_loss(B, mask, output, target)
+            loss = self.calculate_ssim_loss(B, mask, output, target, batch_max_value)
             return loss
         else:
             diff = torch.abs(output - target)

@@ -16,6 +16,8 @@ import csv
 import os
 import torch.nn.functional as F
 
+import pdb
+
 def validation_epoch_end(self, outputs):
     global_ssims, roi_ssims = [], []
     global_psnrs, roi_mses = [], []
@@ -177,7 +179,7 @@ class UnetModule(MriModule):
         output = self(batch.image)
 
         # compute ROI‐weighted pixel loss directly
-        loss = self.loss_fn(output, batch.target)
+        loss = self.loss_fn(output, batch.target, batch.max_value)
 
         self.log("train/loss", loss, prog_bar=True)
         return loss
@@ -186,8 +188,7 @@ class UnetModule(MriModule):
         output = self(batch.image)
         mean = batch.mean.unsqueeze(1).unsqueeze(2)
         std = batch.std.unsqueeze(1).unsqueeze(2)
-
-        val_loss = self.loss_fn(output, batch.target)
+        val_loss = self.loss_fn(output, batch.target, batch.max_value)
         self.log("validation_loss", val_loss, prog_bar=True)
 
         return {
