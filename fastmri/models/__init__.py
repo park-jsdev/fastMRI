@@ -8,4 +8,5 @@ LICENSE file in the root directory of this source tree.
 from .adaptive_varnet import AdaptiveVarNet
 from .policy import StraightThroughPolicy
 from .unet import Unet
+from .attention_unet import AttentionUnet
 from .varnet import NormUnet, SensitivityModel, VarNet, VarNetBlock
