@@ -8,6 +8,10 @@ LICENSE file in the root directory of this source tree.
 import os
 import pathlib
 from argparse import ArgumentParser
+import torch
+
+import pathlib as pl_pathlib
+torch.serialization.add_safe_globals([pl_pathlib.WindowsPath])
 
 import pytorch_lightning as pl
 
@@ -161,13 +165,15 @@ def build_args():
     # trainer config
     parser = pl.Trainer.add_argparse_args(parser)
     parser.set_defaults(
-        gpus=num_gpus,  # number of gpus to use
-        replace_sampler_ddp=False,  # this is necessary for volume dispatch during val
-        strategy=backend,  # what distributed version to use
+        devices=1,
+        accelerator="gpu",
+        strategy=None,
+        replace_sampler_ddp=False,
         seed=42,  # random seed
         deterministic=True,  # makes things slower, but deterministic
         default_root_dir=default_root_dir,  # directory for logs and checkpoints
         max_epochs=50,  # max number of epochs
+        num_workers=0,
     )
 
     args = parser.parse_args()

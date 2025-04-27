@@ -21,7 +21,6 @@ class ROILoss(nn.Module):
         roi_mask: str = "binary",          # "binary" or "gaussian"
         margin_ratio: float = 0.2,         # for binary mask
         strength: float = 5.0,             # for gaussian mask
-        alpha: float = 0.25                # recommended from paper
     ):
         super().__init__()
         self.loss_type    = loss_type
@@ -29,7 +28,6 @@ class ROILoss(nn.Module):
         self.roi_mask     = roi_mask
         self.margin_ratio = margin_ratio
         self.strength     = strength
-        self.alpha        = alpha
 
     def make_mask(self, tensor: torch.Tensor):
         # tensor is [B,H,W] or [B,1,H,W]; want a [B,1,H,W] mask on same device
@@ -61,73 +59,32 @@ class ROILoss(nn.Module):
         g = torch.exp(-self.strength * (x**2 + y**2))
         m = g.unsqueeze(0).unsqueeze(0).expand(B,C,H,W)
         return m
-    
-    def calculate_ssim_loss(self, batch_size, mask, output, target):
-        loss_fn = SSIMLoss()
-        data_range = torch.tensor([1.0] * batch_size, device=output.device)
-
-        if self.use_roi:
-            loss = loss_fn(output, target, data_range, mask)
-        else:
-            loss = loss_fn(output, target, data_range)
-        return loss
-    
-    def calculate_l1(self, output, target):
-        return torch.abs(output - target)
 
     def forward(self, output, target):
         # ensure [B,1,H,W]
         if output.ndim == 3:
             output = output.unsqueeze(1)
             target = target.unsqueeze(1)
-        B, _, H, W = output.shape
+
         # pick mask
         if not self.use_roi:
             mask = torch.ones_like(output)
         else:
             mask = self.make_mask(output)
-        #
-        # # elementwise difference
-        # if self.loss_type == "l2":
-        #     diff = (output - target) ** 2
-        # elif self.loss_type == "ssim":
-        #     loss = self.calculate_ssim_loss(B, mask, output, target)
-        #     return loss
-        # elif self.loss_type == "custom":
-            # Get SSIM loss
-        l_msssim =  self.calculate_ssim_loss(B, mask, output, target)
 
-        # Get L1 loss
-        l_l1 = self.calculate_l1(output, target)
-            
-        # Applying mask and ROI if desired, temp implementation to not have to change l2 & l1
-        # SSIM already does come with mask
-        l_l1_masked = l_l1 * mask
+        # elementwise difference
+        if self.loss_type == "l2":
+            diff = (output - target) ** 2
+        else:
+            diff = torch.abs(output - target)
+        weighted = diff * mask
 
         if self.use_roi:
             # average only over the ROI (binary or gaussian)
-            l_l1_masked = l_l1_masked.sum() / mask.sum()
+            return weighted.sum() / mask.sum()
         else:
-        # uniform average over the whole image
-            l_l1_masked = l_l1_masked.mean()
-
-        # Calc custom loss inspired by https://cds.ismrm.org/protected/21MProceedings/PDFfiles/1951.html?utm_source=chatgpt.com
-        l_custom = (self.alpha * l_msssim) + (1-self.alpha) * l_l1_masked
-        # print(f"L_mssssim: {l_msssim}, L1: {l_l1_masked}, l_custom: {l_custom}, alpha: {self.alpha}")
-
-        return l_custom
-        #
-        # # Could simply set alpha = 0 to also capture L1 (only) loss but is probably cleaner this way
-        # else:
-        #     diff = self.calculate_l1(output, target)
-        # weighted = diff * mask
-        #
-        # if self.use_roi:
-        #     # average only over the ROI (binary or gaussian)
-        #     return weighted.sum() / mask.sum()
-        # else:
-        #     # uniform average over the whole image
-        #     return weighted.mean()
+            # uniform average over the whole image
+            return weighted.mean()
 
 # =============================
 # SSIM Loss
@@ -152,24 +109,15 @@ class SSIMLoss(nn.Module):
         NP = win_size**2
         self.cov_norm = NP / (NP - 1)
 
-    def crop_gaussian_mask(self, mask, target_size):
-        """Crop the center of the Gaussian mask to the target size."""
-        original_size = mask.shape[2:]  # Assuming the mask shape is [1, 1, H, W]
-        start_x = (original_size[0] - target_size[0]) // 2
-        start_y = (original_size[1] - target_size[1]) // 2
-        cropped_mask = mask[:, :, start_x:start_x + target_size[0], start_y:start_y + target_size[1]]
-        return cropped_mask
-
     def forward(
         self,
         X: torch.Tensor,
         Y: torch.Tensor,
         data_range: torch.Tensor,
-        mask: torch.Tensor = None,
         reduced: bool = True,
     ):
         assert isinstance(self.w, torch.Tensor)
-        self.w = self.w.to(X.device)
+
         data_range = data_range[:, None, None, None]
         C1 = (self.k1 * data_range) ** 2
         C2 = (self.k2 * data_range) ** 2
@@ -189,18 +137,8 @@ class SSIMLoss(nn.Module):
         )
         D = B1 * B2
         S = (A1 * A2) / D
-        
-        if mask is not None:
-            # Ensure the mask has the same spatial dimensions as S
-            target_size = S.shape[2:]
-            mask = self.crop_gaussian_mask(mask, target_size)
-            assert mask.shape[2:] == S.shape[2:], "Mask dimensions do not match SSIM output dimensions"
-            # Weight the SSIM loss with the mask (element-wise multiplication)
-            S = S * mask  # Apply the mask element-wise
 
         if reduced:
-            # Return the weighted mean SSIM loss (mean over the weighted values)
-            return 1 - S.sum() / mask.sum() if mask is not None else 1 - S.mean()
+            return 1 - S.mean()
         else:
-            # Return the un-reduced (pixel-wise) weighted SSIM
             return 1 - S
