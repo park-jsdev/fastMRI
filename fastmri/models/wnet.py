@@ -1,6 +1,6 @@
 from torch import nn
-from encoder import Encoder
-from decoder import Decoder
+from .encoder import Encoder
+from .decoder import Decoder
 
 
 class Wnet(nn.Module):

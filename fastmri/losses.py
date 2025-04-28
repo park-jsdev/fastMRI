@@ -285,3 +285,60 @@ class L2LossMaskGauss(nn.Module):
         masked_l2_loss = l2_loss * mask
         # Return the mean of the masked L2 loss
         return masked_l2_loss.sum() / mask.sum()
+
+
+class ReconstructionLoss(nn.Module):
+    def __init__(self, method='l2', reduction='mean'):
+        super(ReconstructionLoss, self).__init__()
+        self.reduction = reduction
+        self.method = method
+
+        if method == 'l2':
+            self.loss = nn.MSELoss(reduction=self.reduction)
+        else:
+            self.loss = nn.L1Loss(reduction=self.reduction)
+
+    def forward(self, input, target):
+        return self.loss(input, target)
+
+
+class TotalVariationLoss(nn.Module):
+    def __init__(self, reduction='mean', isotropic=True):
+        super(TotalVariationLoss, self).__init__()
+        self.reduction = reduction
+        self.isotropic = isotropic
+
+    def forward(self, x):
+        dh = x[:, :, 1:, :] - x[:, :, :-1, :]
+        dw = x[:, :, :, 1:] - x[:, :, :, :-1]
+
+        if self.isotropic:
+            tv = (dh ** 2 + dw ** 2)
+        else:
+            tv = (dh.abs() + dw.abs())
+
+        if self.reduction == 'mean':
+            return tv.mean()
+        elif self.reduction == 'sum':
+            return tv.sum()
+        else:
+            return tv
+
+
+class CTLoss(nn.Module):
+    def __init__(self, reduction='mean'):
+        super(CTLoss, self).__init__()
+
+        self.reduction = reduction
+
+        self.ce_loss = nn.CrossEntropyLoss()
+        self.tv_loss = TotalVariationLoss(reduction=self.reduction)
+
+    def forward(self, input):
+        # k_labels = input.argmax(dim=1)
+
+        soft_output = torch.softmax(input, dim=1)
+        k_labels = soft_output.argmax(dim=1)  # (batch, H, W) integer labels
+
+        ct_loss = self.ce_loss(input, k_labels) + self.tv_loss(input)
+        return ct_loss
