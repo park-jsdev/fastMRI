@@ -10,3 +10,4 @@ from .mri_module import MriModule
 from .unet_module import UnetModule
 from .attention_unet_module import AttentionUnetModule
 from .varnet_module import VarNetModule
+from .wnet_module import WnetModule
