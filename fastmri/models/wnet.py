@@ -14,11 +14,13 @@ class Wnet(nn.Module):
         self.padding = padding
         self.num_classes = num_classes
 
-        self.encoder = Encoder(in_channels=self.in_channels, num_classes=self.num_classes)
-        self.decoder = Decoder(in_channels=self.in_channels, num_classes=self.num_classes)
+        self.encoder = Encoder(squeeze=2, ch_mul=64, in_chans=self.in_channels)
+        self.decoder = Decoder(squeeze=2, ch_mul=64, in_chans=self.out_channels)
 
     def forward(self, x):
-        encoded = self.encoder(x)
-        decoded = self.decoder(encoded)
+        encoded = self.encoder(x)  # seg
+        decoded = self.decoder(encoded)  # recon
 
-        return encoded, decoded
+        return decoded, encoded
+
+

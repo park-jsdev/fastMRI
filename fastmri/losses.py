@@ -309,20 +309,28 @@ class TotalVariationLoss(nn.Module):
         self.isotropic = isotropic
 
     def forward(self, x):
+        # print(x.size)
+        # dh = x[:, :, 1:, :] - x[:, :, :-1, :]
+        # dw = x[:, :, :, 1:] - x[:, :, :, :-1]
+        #
+        # if self.isotropic:
+        #     tv = (dh ** 2 + dw ** 2)
+        # else:
+        #     tv = (dh.abs() + dw.abs())
+        #
+        # if self.reduction == 'mean':
+        #     return tv.mean()
+        # elif self.reduction == 'sum':
+        #     return tv.sum()
+        # else:
+        #     return tv
+
         dh = x[:, :, 1:, :] - x[:, :, :-1, :]
         dw = x[:, :, :, 1:] - x[:, :, :, :-1]
 
-        if self.isotropic:
-            tv = (dh ** 2 + dw ** 2)
-        else:
-            tv = (dh.abs() + dw.abs())
+        tv_loss = (dh ** 2).sum() + (dw ** 2).sum()
 
-        if self.reduction == 'mean':
-            return tv.mean()
-        elif self.reduction == 'sum':
-            return tv.sum()
-        else:
-            return tv
+        return tv_loss
 
 
 class CTLoss(nn.Module):
