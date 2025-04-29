@@ -142,3 +142,70 @@ class SSIMLoss(nn.Module):
             return 1 - S.mean()
         else:
             return 1 - S
+
+# =============================
+# PSNR Loss (as a metric-style loss)
+# =============================
+
+class PSNRLoss(nn.Module):
+    def __init__(
+        self,
+        use_roi: bool = False,
+        roi_mask: str = "binary",      # "binary" or "gaussian"
+        margin_ratio: float = 0.2,      # for binary mask
+        strength: float = 5.0,          # for gaussian mask
+    ):
+        super().__init__()
+        self.use_roi = use_roi
+        self.roi_mask = roi_mask
+        self.margin_ratio = margin_ratio
+        self.strength = strength
+
+    def make_mask(self, tensor: torch.Tensor):
+        # tensor is [B,H,W] or [B,1,H,W]; return a [B,1,H,W] mask on same device
+        output = tensor.unsqueeze(1) if tensor.ndim == 3 else tensor
+        device = output.device
+        if self.roi_mask == "binary":
+            return self._binary_mask(output.shape, device)
+        return self._gaussian_mask(output.shape, device)
+
+    def _binary_mask(self, shape, device):
+        B, C, H, W = shape
+        h_m = int(H * self.margin_ratio)
+        w_m = int(W * self.margin_ratio)
+        m = torch.zeros((B, C, H, W), device=device)
+        m[:, :, h_m:H-h_m, w_m:W-w_m] = 1.0
+        return m
+
+    def _gaussian_mask(self, shape, device):
+        B, C, H, W = shape
+        y = torch.linspace(-1,1,H,device=device).view(-1,1).expand(H,W)
+        x = torch.linspace(-1,1,W,device=device).view(1,-1).expand(H,W)
+        y = y / self.margin_ratio
+        x = x / self.margin_ratio
+        g = torch.exp(-self.strength * (x**2 + y**2))
+        m = g.unsqueeze(0).unsqueeze(0).expand(B,C,H,W)
+        return m
+
+    def forward(self, output: torch.Tensor, target: torch.Tensor):
+        if output.ndim == 3:
+            output = output.unsqueeze(1)
+            target = target.unsqueeze(1)
+
+        if not self.use_roi:
+            mask = torch.ones_like(output)
+        else:
+            mask = self.make_mask(output)
+
+        # Compute MSE with or without mask
+        mse = ((output - target) ** 2) * mask
+        if self.use_roi:
+            mse = mse.sum(dim=[1,2,3]) / mask.sum(dim=[1,2,3])  # per image
+        else:
+            mse = mse.mean(dim=[1,2,3])  # per image
+
+        # max value per image in batch
+        max_vals = target.view(target.size(0), -1).max(dim=1)[0]
+        psnr_vals = 10 * torch.log10((max_vals ** 2) / mse)
+
+        return -psnr_vals.mean()  # Negative because we minimize loss

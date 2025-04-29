@@ -763,12 +763,12 @@ def build_args():
         checkpoint_dir.mkdir(parents=True)
 
     args.checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        filepath=checkpoint_dir,
-        save_top_k=True,
+        dirpath=checkpoint_dir,
+        filename="{epoch}-{step}",
+        save_top_k=1,
         verbose=True,
         monitor="validation_loss",
         mode="min",
-        prefix="",
     )
 
     # set default checkpoint if one exists in our checkpoint directory

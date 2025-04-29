@@ -1,37 +1,30 @@
-"""
-Copyright (c) Facebook, Inc. and its affiliates.
-
-This source code is licensed under the MIT license found in the
-LICENSE file in the root directory of this source tree.
-"""
-
 import os
 import pathlib
 from argparse import ArgumentParser
 
 import pytorch_lightning as pl
+from pytorch_lightning.loggers import TensorBoardLogger
 
 from fastmri.data.mri_data import fetch_dir
 from fastmri.data.subsample import create_mask_for_mask_type
 from fastmri.data.transforms import UnetDataTransform
 from fastmri.pl_modules import FastMriDataModule, UnetModule
 
+import torch.serialization
+
 
 def cli_main(args):
     pl.seed_everything(args.seed)
+    torch.serialization.add_safe_globals([pathlib.PosixPath])  # Patch for PosixPath
 
-    # ------------
-    # data
-    # ------------
-    # this creates a k-space mask for transforming input data
+    # Data transforms
     mask = create_mask_for_mask_type(
         args.mask_type, args.center_fractions, args.accelerations
     )
-    # use random masks for train transform, fixed masks for val transform
     train_transform = UnetDataTransform(args.challenge, mask_func=mask, use_seed=False)
     val_transform = UnetDataTransform(args.challenge, mask_func=mask)
     test_transform = UnetDataTransform(args.challenge)
-    # ptl data module - this handles data loaders
+
     data_module = FastMriDataModule(
         data_path=args.data_path,
         challenge=args.challenge,
@@ -46,9 +39,6 @@ def cli_main(args):
         distributed_sampler=(args.accelerator in ("ddp", "ddp_cpu")),
     )
 
-    # ------------
-    # model
-    # ------------
     model = UnetModule(
         in_chans=args.in_chans,
         out_chans=args.out_chans,
@@ -59,37 +49,41 @@ def cli_main(args):
         lr_step_size=args.lr_step_size,
         lr_gamma=args.lr_gamma,
         weight_decay=args.weight_decay,
+        loss_type=args.loss_type
     )
 
-    # ------------
-    # trainer
-    # ------------
-    trainer = pl.Trainer.from_argparse_args(args)
+    logger = TensorBoardLogger(
+        save_dir=str(args.default_root_dir),  # or wherever you're saving logs
+        name="lightning_logs")
 
-    # ------------
-    # run
-    # ------------
+    trainer = pl.Trainer.from_argparse_args(args, logger=logger)
+
     if args.mode == "train":
         trainer.fit(model, datamodule=data_module)
     elif args.mode == "test":
         trainer.test(model, datamodule=data_module)
     else:
-        raise ValueError(f"unrecognized mode {args.mode}")
+        raise ValueError(f"Unrecognized mode {args.mode}")
 
 
 def build_args():
     parser = ArgumentParser()
 
-    # basic args
-    path_config = pathlib.Path("../../fastmri_dirs.yaml")
+    # Defaults
+    path_config = pathlib.Path("fastmri_dirs.yaml")
     num_gpus = 2
     backend = "ddp"
     batch_size = 1 if backend == "ddp" else num_gpus
 
-    # set defaults based on optional directory config
-    data_path = fetch_dir("knee_path", path_config)
-    default_root_dir = fetch_dir("log_path", path_config) / "unet" / "unet_demo"
+    # Config from YAML (optional)
+    try:
+        data_path = fetch_dir("knee_path", path_config)
+        default_root_dir = fetch_dir("log_path", path_config) / "unet" / "unet_demo"
+    except:
+        data_path = "~/scratch/fastmri_data/singlecoil_knee"
+        default_root_dir = pathlib.Path("~/scratch/fastMRI/unet/unet_demo").expanduser()
 
+    
     # client arguments
     parser.add_argument(
         "--mode",
@@ -155,13 +149,13 @@ def build_args():
     args = parser.parse_args()
 
     # configure checkpointing in checkpoint_dir
-    checkpoint_dir = args.default_root_dir / "checkpoints"
+    checkpoint_dir = pathlib.Path(args.default_root_dir) / "checkpoints"
     if not checkpoint_dir.exists():
         checkpoint_dir.mkdir(parents=True)
 
     args.callbacks = [
         pl.callbacks.ModelCheckpoint(
-            dirpath=args.default_root_dir / "checkpoints",
+            dirpath=pathlib.Path(args.default_root_dir) / "checkpoints",
             save_top_k=True,
             verbose=True,
             monitor="validation_loss",
@@ -180,10 +174,6 @@ def build_args():
 
 def run_cli():
     args = build_args()
-
-    # ---------------------
-    # RUN TRAINING
-    # ---------------------
     cli_main(args)
 
 

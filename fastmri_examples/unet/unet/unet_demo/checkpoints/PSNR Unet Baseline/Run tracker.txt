@@ -1,0 +1,7 @@
+3rd baseline - 2534231   coc-gpu psnr-une   lburk3  R    1:21:01      1 atl1-1-02-010-32-0
+1st Guassian - 2535297 coc-gpu,i fastmri-   lburk3 PD       0:00      1 (None)
+
+JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
+1st Guassian - 2535297   coc-gpu fastmri-   lburk3  R       3:24      1 atl1-1-01-002-6-0
+3rd baseline - 2534231   coc-gpu psnr-une   lburk3  R    1:24:48      1 atl1-1-02-010-32-0
+1st Binary - 2535385 coc-gpu,i fastmri-   lburk3 PD       0:00      1 (None)

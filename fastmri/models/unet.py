@@ -104,6 +104,28 @@ class Unet(nn.Module):
 
         return output
 
+class ResidualUnet(nn.Module):
+    """
+    Residual U-Net architecture:
+    Standard U-Net + residual connection from input to output.
+    """
+    def __init__(self, in_chans=1, out_chans=1, chans=32, num_pool_layers=4, drop_prob=0.0):
+        super().__init__()
+        from fastmri.models.unet import Unet  # Import your existing Unet
+
+        self.unet = Unet(
+            in_chans=in_chans,
+            out_chans=out_chans,
+            chans=chans,
+            num_pool_layers=num_pool_layers,
+            drop_prob=drop_prob,
+        )
+
+    def forward(self, x):
+        x_in = x
+        out = self.unet(x)
+        out = out + x_in
+        return out
 
 class ConvBlock(nn.Module):
     """

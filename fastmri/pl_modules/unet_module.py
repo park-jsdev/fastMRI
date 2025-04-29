@@ -8,10 +8,10 @@ LICENSE file in the root directory of this source tree.
 from argparse import ArgumentParser
 
 import torch
-from fastmri.models import Unet
+from fastmri.models import Unet, ResidualUnet
 from fastmri.pl_modules.mri_module import MriModule
 from piq import ssim, psnr
-from fastmri.losses import ROILoss, SSIMLoss
+from fastmri.losses import ROILoss, SSIMLoss, PSNRLoss
 import csv
 import os
 import torch.nn.functional as F
@@ -105,7 +105,7 @@ class UnetModule(MriModule):
 
 
         # –– ROI loss args
-        loss_type:      str   = "l1",  # "l1" or "l2"
+        loss_type:      str   = "psnr",  # "l1" or "l2"
         roi_weighting:  bool  = False,  # turn ROI on/off
         roi_mask:       str   = "binary",  # "binary" or "gaussian"
         roi_margin:     float = 0.2,  # for binary mask
@@ -135,6 +135,7 @@ class UnetModule(MriModule):
 
         # pop our custom args so MriModule.__init__ isn't confused
         # (but keep them in locals for save_hyperparameters)
+        print(kwargs)
         for key in ("loss_type", "roi_weighting", "roi_mask", "roi_margin", "roi_strength"):
             kwargs.pop(key, None)
 
@@ -154,13 +155,21 @@ class UnetModule(MriModule):
         self.weight_decay = weight_decay
 
         # –– instantiate the ROI loss
-        self.loss_fn = ROILoss(
-            loss_type = loss_type,
-            use_roi = roi_weighting,
-            roi_mask = roi_mask,
-            margin_ratio = roi_margin,
-            strength = roi_strength,
-        )
+        if loss_type == "psnr":
+            self.loss_fn = PSNRLoss(
+                use_roi = roi_weighting,
+                roi_mask = roi_mask,
+                margin_ratio = roi_margin,
+                strength = roi_strength,
+            )
+        else:
+            self.loss_fn = ROILoss(
+                loss_type = loss_type,
+                use_roi = roi_weighting,
+                roi_mask = roi_mask,
+                margin_ratio = roi_margin,
+                strength = roi_strength,
+            )
 
         # –– model
         self.unet = Unet(
@@ -270,7 +279,7 @@ class UnetModule(MriModule):
             type=float,
             help="Strength of weight decay regularization",
         )
-        parser.add_argument("--loss-type", default="l1", choices=["l1", "l2"])
+        parser.add_argument("--loss-type", default="l1", choices=["l1", "l2", "psnr"])
         parser.add_argument("--roi-weighting", action="store_true", help = "Enable ROI loss instead of uniform")
         parser.add_argument("--roi-mask", default="binary", choices = ["binary", "gaussian"], help = "Type of ROI mask")
         parser.add_argument("--roi-margin", default=0.2, type=float, help = "Fractional border to zero out (binary mask)")

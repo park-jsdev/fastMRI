@@ -1,0 +1,2 @@
+/var/lib/slurm/slurmd/job2520284/slurm_script: line 16: cd: /home/hice1/lburk3/scratch/fastMRI_mvp1/fastMRI/fastmri_examples/unet: No such file or directory
+python: can't open file '/storage/ice1/1/5/lburk3/fastMRI/train_unet.py': [Errno 2] No such file or directory

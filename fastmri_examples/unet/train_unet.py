@@ -4,9 +4,17 @@ Copyright (c) Facebook, Inc. and its affiliates.
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+import sys
+sys.path.insert(0, "/home/hice1/lburk3/scratch/fastMRI")
+import fastmri
 
 import os
 import pathlib
+
+import torch.serialization
+
+torch.serialization.add_safe_globals([pathlib.PosixPath])
+
 from argparse import ArgumentParser
 
 import pytorch_lightning as pl
@@ -15,7 +23,14 @@ from fastmri.data.mri_data import fetch_dir
 from fastmri.data.subsample import create_mask_for_mask_type
 from fastmri.data.transforms import UnetDataTransform
 from fastmri.pl_modules import FastMriDataModule, UnetModule
+
+from fastmri.pl_modules.data_module import FastMriDataModule
+from fastmri.pl_modules.unet_module import UnetModule
+
 import yaml
+
+
+print("Using:", fastmri.pl_modules.unet_module.__file__)
 
 
 def cli_main(args):
@@ -82,7 +97,7 @@ def cli_main(args):
     # ------------
     # trainer
     # ------------
-    trainer = pl.Trainer.from_argparse_args(args, callbacks=args.callbacks)
+    trainer = pl.Trainer.from_argparse_args(args)
 
     # ------------
     # run
@@ -171,6 +186,7 @@ def build_args():
     )
 
     args = parser.parse_args()
+    args.default_root_dir = pathlib.Path(args.default_root_dir)
 
     # configure checkpointing in checkpoint_dir
     checkpoint_dir = args.default_root_dir / "checkpoints"
@@ -198,15 +214,6 @@ def build_args():
 
 def run_cli():
     args = build_args()
-    args.default_root_dir = args.default_root_dir / f"roi_{args.roi_mask}"
-    args.callbacks = [
-        pl.callbacks.ModelCheckpoint(
-            dirpath=args.default_root_dir / "checkpoints",
-            save_top_k=True,
-            monitor="validation_loss",
-            mode="min",
-        )
-    ]
 
     # ---------------------
     # RUN TRAINING

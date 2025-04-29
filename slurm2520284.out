@@ -1,0 +1,46 @@
+---------------------------------------
+Begin Slurm Prolog: Apr-23-2025 06:44:04
+Job ID:    2520284
+User ID:   lburk3
+Account:   coc
+Job name:  fastmri-unet
+Partition: coc-gpu
+QOS:       coc-ice
+---------------------------------------
+Running on atl1-1-02-011-32-0 with 16 CPUs
+Wed Apr 23 06:44:17 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 555.42.02              Driver Version: 555.42.02      CUDA Version: 12.5     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  Tesla V100-PCIE-16GB           On  |   00000000:3B:00.0 Off |                    0 |
+| N/A   45C    P0             27W /  250W |       4MiB /  16384MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   1  Tesla V100-PCIE-16GB           On  |   00000000:AF:00.0 Off |                    0 |
+| N/A   42C    P0             24W /  250W |       4MiB /  16384MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI        PID   Type   Process name                              GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+---------------------------------------
+Begin Slurm Epilog: Apr-23-2025 06:44:18
+Job ID:        2520284
+User ID:       lburk3
+Account:       coc
+Job name:      fastmri-unet
+Resources:     cpu=16,gres/gpu:v100=2,mem=32G,node=1
+Rsrc Used:     cput=00:04:00,vmem=0,walltime=00:00:15,mem=37076K,energy_used=0
+Partition:     coc-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-02-011-32-0
+---------------------------------------

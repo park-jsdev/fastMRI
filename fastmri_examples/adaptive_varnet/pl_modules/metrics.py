@@ -6,10 +6,11 @@ LICENSE file in the root directory of this source tree.
 """
 
 import pytorch_lightning as pl
+import torchmetrics
 import torch
 
 
-class DistributedArraySum(pl.metrics.Metric):
+class DistributedArraySum(torchmetrics.Metric):
     def __init__(self, dist_sync_on_step=True):
         super().__init__(dist_sync_on_step=dist_sync_on_step)
 
@@ -24,7 +25,7 @@ class DistributedArraySum(pl.metrics.Metric):
         return self.quantity
 
 
-class DistributedMetricSum(pl.metrics.Metric):
+class DistributedMetricSum(torchmetrics.Metric):
     def __init__(self, dist_sync_on_step=True):
         super().__init__(dist_sync_on_step=dist_sync_on_step)
 
