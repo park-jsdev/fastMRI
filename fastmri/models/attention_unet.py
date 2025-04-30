@@ -7,11 +7,12 @@ import pdb
 class AttentionGate(nn.Module):
     def __init__(self, in_chans: int, gating_chans: int):
         super().__init__()
+        # inspired by https://github.com/ozan-oktay/Attention-Gated-Networks
         # project encoder features into gating space
         self.W_x = nn.Conv2d(in_chans, gating_chans, kernel_size=1, bias=False)
         # project decoder features into gating space
         self.W_g = nn.Conv2d(gating_chans, gating_chans, kernel_size=1, bias=False)
-        # combine and produce attention map
+
         self.psi = nn.Sequential(
             nn.Conv2d(gating_chans, 1, kernel_size=1, bias=False),
             nn.Sigmoid()
@@ -19,13 +20,12 @@ class AttentionGate(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x, g):
-        # x: encoder feature-map  (N, in_chans, H, W)
-        # g: decoder gating-signal (N, gating_chans, H, W)
+        # attn = psi(relu(W_x*x + W_g*g))
         x_proj = self.W_x(x)
         g_proj = self.W_g(g)
         f       = self.relu(x_proj + g_proj)
-        attn    = self.psi(f)           # (N,1,H,W), values ∈ [0,1]
-        return x * attn                 # broadcast across channels
+        attn    = self.psi(f)
+        return x * attn
 
 
 # Integrating Attention Gate into U-Net
