@@ -25,11 +25,11 @@ class Block(nn.Module):
             self.conv2 = nn.Conv2d(out_filters, out_filters, kernel_size=3, padding=1)
 
         self.relu1 = nn.ReLU()
-        self.dropout1 = nn.Dropout(0.65)
+        self.dropout1 = nn.Dropout(0.1)
         self.batchnorm1 = nn.BatchNorm2d(out_filters)
 
         self.relu2 = nn.ReLU()
-        self.dropout2 = nn.Dropout(0.65)
+        self.dropout2 = nn.Dropout(0.1)
         self.batchnorm2 = nn.BatchNorm2d(out_filters)
 
     def forward(self, x):
@@ -42,8 +42,9 @@ class Block(nn.Module):
 
         return x
 
+
 class Encoder(nn.Module):
-    def __init__(self, squeeze, ch_mul=64, in_chans=1):
+    def __init__(self, squeeze, ch_mul=64, in_chans=3):
         super(Encoder, self).__init__()
 
         self.enc1 = Block(in_chans, ch_mul, seperable=False)

@@ -294,12 +294,12 @@ class ReconstructionLoss(nn.Module):
         self.method = method
 
         if method == 'l2':
-            self.loss = nn.MSELoss(reduction=self.reduction)
+            self.loss = nn.MSELoss()
         else:
-            self.loss = nn.L1Loss(reduction=self.reduction)
+            self.loss = nn.L1Loss()
 
-    def forward(self, input, target):
-        return self.loss(input, target)
+    def forward(self, x, target):
+        return self.loss(x, target)
 
 
 class TotalVariationLoss(nn.Module):
