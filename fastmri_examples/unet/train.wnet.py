@@ -1,15 +1,13 @@
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid, save_image
 from torchvision import transforms
-from torchvision.datasets import FashionMNIST  # Or your dataset
+from torchvision.datasets import FashionMNIST
 import matplotlib.pyplot as plt
-import torch.nn.functional as F
 import os
 
-from fastmri.losses import CTLoss, ReconstructionLoss  # your loss classes
+from fastmri.losses import CTLoss, ReconstructionLoss
 from fastmri.models import Wnet
 
 
@@ -31,26 +29,12 @@ def train(model, train_loader, optimizer, recon_loss_fn, device, epoch=None):
 
         running_loss += loss.item()
 
-        # # Save only the first image of the first batch in the epoch
-        # if batch_idx == 0 and epoch is not None:
-        #     os.makedirs("encoder_outputs", exist_ok=True)
-        #
-        #     enc_img = encoded[0]  # First image in batch
-        #
-        #     # If encoded has shape [C, H, W], treat as feature map
-        #     if enc_img.ndim == 3:
-        #         grid = make_grid(enc_img.unsqueeze(1), normalize=True, scale_each=True)
-        #         save_image(grid, f"encoder_outputs/epoch_{epoch:02d}.png")
-        #     else:
-        #         print("Unexpected encoder output shape:", enc_img.shape)
-
-        # Save debug outputs for first batch
         if batch_idx == 0 and epoch is not None:
             os.makedirs(f"epoch_outputs/epoch_{epoch:02d}/encoder", exist_ok=True)
             os.makedirs(f"epoch_outputs/epoch_{epoch:02d}/images", exist_ok=True)
 
             # Save original input
-            original = images[0, 0].detach().cpu()  # shape: [H, W]
+            original = images[0, 0].detach().cpu()
             save_image(original.unsqueeze(0), f"epoch_outputs/epoch_{epoch:02d}/images/original.png", normalize=True)
 
             # Save reconstruction (assuming output is 1 channel now)
@@ -58,12 +42,8 @@ def train(model, train_loader, optimizer, recon_loss_fn, device, epoch=None):
             save_image(reconstruction.unsqueeze(0), f"epoch_outputs/epoch_{epoch:02d}/images/reconstruction.png",
                        normalize=True)
 
-            original_np = original.numpy()
-            reconstruction_np = reconstruction.numpy()
+            seg_mask = torch.argmax(seg_map[0], dim=0).cpu().numpy()
 
-            seg_mask = torch.argmax(seg_map[0], dim=0).cpu().numpy()  # shape: [H, W]
-
-            # Plot and save the segmentation mask as an image
             plt.figure(figsize=(4, 4))
             plt.imshow(seg_mask, cmap='tab10')
             plt.axis('off')
@@ -91,15 +71,14 @@ def validate(model, val_loader, recon_loss_fn, device):
 
 
 def main():
-    # Hyperparameters
     batch_size = 64
     num_epochs = 50
     learning_rate = 1e-3
     num_classes = 8  # for segmentation
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Data preparation
     transform = transforms.Compose([
+        # Need padding for FashionMNIST to make it *16
         transforms.Pad(2),
         transforms.ToTensor(),
     ])
@@ -110,15 +89,13 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
-    # Model, optimizer, losses
     model = Wnet(in_channels=1, out_channels=1, num_classes=num_classes).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-    ct_loss_fn = CTLoss(reduction="mean")
+    # ct_loss_fn = CTLoss(reduction="mean")
     recon_loss_fn = ReconstructionLoss(method="l2", reduction="mean")
 
-    # Training loop
     for epoch in range(num_epochs):
         print(f"\n=== Epoch {epoch + 1}/{num_epochs} ===")
         train_loss = train(model, train_loader, optimizer, recon_loss_fn, device, epoch=epoch + 1)

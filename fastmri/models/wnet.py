@@ -1,4 +1,6 @@
 from torch import nn
+from win32evtlog import EvtNextChannelPath
+
 from .encoder import Encoder
 from .decoder import Decoder
 import torch.nn.functional as F
@@ -15,8 +17,8 @@ class Wnet(nn.Module):
         self.padding = padding
         self.num_classes = num_classes
 
-        self.encoder = Encoder(squeeze=self.num_classes, ch_mul=64, in_chans=self.in_channels)
-        self.decoder = Decoder(squeeze=self.num_classes, ch_mul=64, in_chans=self.out_channels)
+        self.encoder = Encoder(feat_channel = 64, in_channels = self.in_channels, num_classes = self.num_classes)
+        self.decoder = Decoder(feat_channel=64, in_channels=self.out_channels, num_classes=self.num_classes)
 
     def forward(self, x):
         encoded = self.encoder(x)
