@@ -34,7 +34,9 @@ def validation_epoch_end(self, outputs):
 
         # ROI mask for metric
         # build a 4D mask from our 3D recon tensor
-        mask = self.loss_fn.make_mask(recon)  # implements the unsqueeze‑and‑route logic
+        # mask = self.loss_fn.make_mask(recon)  # implements the unsqueeze‑and‑route logic
+        mask = self.loss_fn.make_mask(target)
+
 
         # Mask image logging
         self.logger.experiment.add_image(
@@ -110,6 +112,7 @@ class UnetModule(MriModule):
         roi_mask:       str   = "binary",  # "binary" or "gaussian"
         roi_margin:     float = 0.2,  # for binary mask
         roi_strength:   float = 5.0,  # for gaussian mask
+        percentile:     float = 0.3, # for pixel intensity mask
 
         **kwargs,
     ):
@@ -135,7 +138,7 @@ class UnetModule(MriModule):
 
         # pop our custom args so MriModule.__init__ isn't confused
         # (but keep them in locals for save_hyperparameters)
-        for key in ("loss_type", "roi_weighting", "roi_mask", "roi_margin", "roi_strength"):
+        for key in ("loss_type", "roi_weighting", "roi_mask", "roi_margin", "roi_strength", "percentile"):
             kwargs.pop(key, None)
 
         super().__init__(**kwargs)
@@ -160,6 +163,7 @@ class UnetModule(MriModule):
             roi_mask = roi_mask,
             margin_ratio = roi_margin,
             strength = roi_strength,
+            percentile   = percentile,
         )
 
         # –– model
@@ -272,8 +276,9 @@ class UnetModule(MriModule):
         )
         parser.add_argument("--loss-type", default="l1", choices=["l1", "l2"])
         parser.add_argument("--roi-weighting", action="store_true", help = "Enable ROI loss instead of uniform")
-        parser.add_argument("--roi-mask", default="binary", choices = ["binary", "gaussian"], help = "Type of ROI mask")
+        parser.add_argument("--roi-mask", default="binary", choices=["binary","gaussian","otsu","percentile"], help = "Type of ROI mask")
         parser.add_argument("--roi-margin", default=0.2, type=float, help = "Fractional border to zero out (binary mask)")
         parser.add_argument("--roi-strength", default=5.0, type=float, help = "Sharpness of Gaussian mask")
+        parser.add_argument("--percentile", default=0.3, type=float, help="keep only the top \% brightest pixels",)
 
         return parser

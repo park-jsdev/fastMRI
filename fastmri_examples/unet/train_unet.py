@@ -7,6 +7,7 @@ LICENSE file in the root directory of this source tree.
 
 import os
 import pathlib
+from pathlib import Path
 from argparse import ArgumentParser
 
 import pytorch_lightning as pl
@@ -55,6 +56,7 @@ def cli_main(args):
     roi_mask      = args.roi_mask
     roi_margin    = args.roi_margin
     roi_strength  = args.roi_strength
+    percentile    = args.percentile
 
     # ------------
     # model
@@ -77,12 +79,14 @@ def cli_main(args):
         roi_mask       = roi_mask,
         roi_margin     = roi_margin,
         roi_strength   = roi_strength,
+        percentile     = percentile,
     )
 
     # ------------
     # trainer
     # ------------
-    trainer = pl.Trainer.from_argparse_args(args)
+    # trainer = pl.Trainer.from_argparse_args(args)
+    trainer = pl.Trainer.from_argparse_args(args, callbacks=args.callbacks)
 
     # ------------
     # run
@@ -166,21 +170,20 @@ def build_args():
         strategy=backend,  # what distributed version to use
         seed=42,  # random seed
         deterministic=True,  # makes things slower, but deterministic
-        default_root_dir=default_root_dir,  # directory for logs and checkpoints
+        default_root_dir=str(default_root_dir),  # directory for logs and checkpoints
         max_epochs=50,  # max number of epochs
     )
 
     args = parser.parse_args()
     args.default_root_dir = pathlib.Path(args.default_root_dir)
 
-    # configure checkpointing in checkpoint_dir
-    checkpoint_dir = args.default_root_dir / "checkpoints"
-    if not checkpoint_dir.exists():
-        checkpoint_dir.mkdir(parents=True)
+    checkpoint_dir = Path(args.default_root_dir) / "checkpoints"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     args.callbacks = [
         pl.callbacks.ModelCheckpoint(
-            dirpath=args.default_root_dir / "checkpoints",
+            # dirpath=args.default_root_dir / "checkpoints",
+            dirpath=checkpoint_dir,
             save_top_k=True,
             verbose=True,
             monitor="validation_loss",

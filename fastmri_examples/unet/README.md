@@ -9,6 +9,8 @@ which was used as a baseline model in
 
 [fastMRI: An Open Dataset and Benchmarks for Accelerated MRI ({J. Zbontar*, F. Knoll*, A. Sriram*} et al., 2018)](https://arxiv.org/abs/1811.08839)
 
+as well as the improvements to the baseline for Georgia Tech's CS 7643 Deep Learning, group project.
+
 The following files
 
 - `unet_knee_sc_leaderboard_20201111.py`
@@ -56,6 +58,30 @@ the test split you want to run on - either `test` or `challenge`.
 
 The outputs will be saved to `reconstructions` directory which can be uploaded
 for submission.
+
+## Group Project Version
+
+To run training:
+
+```bash
+python train_unet.py \
+  --mode train \
+  --challenge singlecoil \
+  --data_path ~/scratch/fastmri_data/singlecoil_knee \
+  --default_root_dir unet_demo/roi_gaussian \
+  --mask_type random \
+  --gpus 2 \
+  --strategy ddp \
+  --replace_sampler_ddp False \
+  --roi-weighting \
+  --roi-mask gaussian \
+  --roi-margin 0.2 \
+  --roi-strength 5.0 \
+  --loss-type l2
+```
+Add a flag for the default_root_dir if you want to separate experiments (have the checkpoints/logs in separate folders). If you don’t include the flag, it will use the default root director.
+You can include –roi-weighting to turn it on, and remove the line to turn it off.
+You can change loss-type to l2, roi-mask to gaussian or binary, roi-margin is the margin from the border, and the roi-strength is for gaussian decay. Higher roi-strength means greater decay as you move outside from the center. 5.0 is recommended as baseline.
 
 ## Pretrained Models
 
