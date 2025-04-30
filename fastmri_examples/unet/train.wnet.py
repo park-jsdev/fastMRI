@@ -33,11 +33,9 @@ def train(model, train_loader, optimizer, recon_loss_fn, device, epoch=None):
             os.makedirs(f"epoch_outputs/epoch_{epoch:02d}/encoder", exist_ok=True)
             os.makedirs(f"epoch_outputs/epoch_{epoch:02d}/images", exist_ok=True)
 
-            # Save original input
             original = images[0, 0].detach().cpu()
             save_image(original.unsqueeze(0), f"epoch_outputs/epoch_{epoch:02d}/images/original.png", normalize=True)
 
-            # Save reconstruction (assuming output is 1 channel now)
             reconstruction = decoded[0, 0].detach().cpu()
             save_image(reconstruction.unsqueeze(0), f"epoch_outputs/epoch_{epoch:02d}/images/reconstruction.png",
                        normalize=True)
@@ -74,7 +72,7 @@ def main():
     batch_size = 64
     num_epochs = 50
     learning_rate = 1e-3
-    num_classes = 8  # for segmentation
+    num_classes = 8
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     transform = transforms.Compose([
